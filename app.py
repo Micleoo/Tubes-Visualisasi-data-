@@ -122,6 +122,27 @@ with tab4:
         p2.add_tools(HoverTool(tooltips=[("Jam", "@Hour"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
         st.bokeh_chart(p2, use_container_width=True)
     
+    st.subheader("Konsumsi Harian")
+    if 'DayOfWeek' in df.columns:
+        col_daily1, col_daily2 = st.columns([1, 2])
+        with col_daily1:
+            selected_month_daily = st.selectbox("Pilih Bulan untuk Analisis Harian", 
+                                               sorted(df['Month'].unique()), 
+                                               key="daily_month")
+        with col_daily2:
+            filtered_daily_df = df[df['Month'] == selected_month_daily]
+            daily_avg = filtered_daily_df.groupby("DayOfWeek")["EnergyConsumption"].mean().reset_index()
+            source_daily = ColumnDataSource(daily_avg)
+            
+            p_daily = figure(title=f"Konsumsi Harian - Bulan {selected_month_daily}",
+                           x_axis_label="Hari", y_axis_label="Energy Consumption",
+                           height=300, width=600)
+            p_daily.vbar(x='DayOfWeek', top='EnergyConsumption', source=source_daily, width=0.6, color="green", alpha=0.7)
+            p_daily.add_tools(HoverTool(tooltips=[("Hari", "@DayOfWeek"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
+            st.bokeh_chart(p_daily, use_container_width=True)
+    else:
+        st.info("Kolom 'DayOfWeek' tidak tersedia dalam dataset untuk visualisasi harian")
+    
     st.subheader("Scatter Plot Dinamis")
     col3, col4, col5 = st.columns([1, 1, 3])
     
