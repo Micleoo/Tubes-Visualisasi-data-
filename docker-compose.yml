@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  streamlit:
+    build: .
+    container_name: streamlit-container
+    ports:
+      - "8501:8501"
+    networks:
+      - mynetwork
+    platform: linux/amd64   # optional
+
+networks:
+  mynetwork:
+    driver: bridge
