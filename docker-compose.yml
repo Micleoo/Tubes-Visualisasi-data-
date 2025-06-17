@@ -3,7 +3,7 @@ version: "3.8"
 services:
   streamlit:
     build: .
-    container_name: streamlit-container
+    container_name: streamlit-container2
     ports:
       - "8501:8501"
     networks:

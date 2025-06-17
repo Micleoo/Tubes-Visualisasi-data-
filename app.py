@@ -2,150 +2,139 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, HoverTool
 from sklearn.cluster import KMeans
 from bokeh.palettes import Category10
 
-# --- Load dataset ---
-st.title("⚡ Analisis & Prediksi Konsumsi Energi Bangunan")
+st.set_page_config(page_title="Energy Analysis", layout="wide")
 
-try:
-    df = pd.read_csv("Energy_consumption_dataset.csv")
-except Exception as e:
-    st.error("❌ Gagal memuat data. Pastikan file `Energy_consumption_dataset.csv` tersedia.")
-    st.stop()
+st.title("Analisis & Prediksi Konsumsi Energi Bangunan")
 
-# --- Validasi kolom penting ---
-expected_columns = ['Temperature', 'Humidity', 'Occupancy', 'HVACUsage', 'LightingUsage', 'RenewableEnergy', 'EnergyConsumption', 'Month', 'Hour']
-missing = [col for col in expected_columns if col not in df.columns]
-if missing:
-    st.error(f"❌ Dataset tidak memiliki kolom berikut: {', '.join(missing)}")
-    st.stop()
+@st.cache_data
+def load_data():
+    try:
+        df = pd.read_csv("Energy_consumption_dataset.csv")
+        df.dropna(inplace=True)
+        df.drop_duplicates(inplace=True)
+        df['HVACUsage'] = df['HVACUsage'].map({'Off': 0, 'On': 1})
+        df['LightingUsage'] = df['LightingUsage'].map({'Off': 0, 'On': 1})
+        return df
+    except Exception as e:
+        st.error("Gagal memuat data")
+        st.stop()
 
-# --- Bersih-bersih data ---
-df.dropna(inplace=True)
-df.drop_duplicates(inplace=True)
-df['HVACUsage'] = df['HVACUsage'].map({'Off': 0, 'On': 1})
-df['LightingUsage'] = df['LightingUsage'].map({'Off': 0, 'On': 1})
+@st.cache_resource
+def load_models():
+    try:
+        return {
+            'regresi': joblib.load("model_regresi.pkl"),
+            'klasifikasi': joblib.load("model_klasifikasi.pkl"),
+            'encoder': joblib.load("label_encoder.pkl"),
+            'scaler': joblib.load("scaler.pkl")
+        }
+    except Exception as e:
+        st.error("Gagal memuat model")
+        st.stop()
 
-# --- Load model ---
-try:
-    model_regresi = joblib.load("model_regresi.pkl")
-    model_clf = joblib.load("model_klasifikasi.pkl")
-    label_encoder = joblib.load("label_encoder.pkl")
-    scaler = joblib.load("scaler.pkl")
-except Exception as e:
-    st.error("❌ Gagal memuat salah satu model atau encoder. Pastikan semua file `.pkl` tersedia.")
-    st.stop()
+df = load_data()
+models = load_models()
 
-# --- Sidebar Navigasi ---
-st.sidebar.title("🔍 Menu Navigasi")
-page = st.sidebar.radio("Pilih halaman:", ["Prediksi", "Klasifikasi", "Clustering", "Visualisasi"])
-
-# --- Form input umum ---
-def input_form():
-    st.subheader("🧾 Input Parameter")
-    temperature = st.slider("Temperature (°C)", 10, 40, 25)
+with st.sidebar:
+    st.header("🔍 Input Parameter")
+    temp = st.slider("Temperature (°C)", 10, 40, 25)
     humidity = st.slider("Humidity (%)", 10, 100, 50)
-    occupancy = st.slider("Occupancy (jumlah orang)", 0, 50, 10)
-    hvac = st.selectbox("HVAC Usage", ["Off", "On"])
-    lighting = st.selectbox("Lighting Usage", ["Off", "On"])
-    renewable = st.slider("Renewable Energy (kWh)", 0, 100, 20)
-
+    occupancy = st.slider("Occupancy", 0, 50, 10)
+    hvac = st.selectbox("HVAC", ["Off", "On"])
+    lighting = st.selectbox("Lighting", ["Off", "On"])
+    renewable = st.slider("Renewable Energy", 0, 100, 20)
+    
     fitur = pd.DataFrame([{
-        "Temperature": temperature,
-        "Humidity": humidity,
-        "Occupancy": occupancy,
+        "Temperature": temp, "Humidity": humidity, "Occupancy": occupancy,
         "HVACUsage": 1 if hvac == "On" else 0,
         "LightingUsage": 1 if lighting == "On" else 0,
         "RenewableEnergy": renewable
     }])
-    return fitur
 
-# --- Halaman Prediksi Regresi ---
-if page == "Prediksi":
-    st.header("🔋 Prediksi Konsumsi Energi")
-    fitur = input_form()
-    if st.button("Prediksi"):
-        hasil = model_regresi.predict(fitur)[0]
-        st.success(f"Perkiraan konsumsi energi: **{hasil:.2f} kWh**")
+tab1, tab2, tab3, tab4 = st.tabs(["Prediksi", "Klasifikasi", "Clustering", "Visualisasi"])
 
-# --- Halaman Klasifikasi ---
-elif page == "Klasifikasi":
-    st.header("⚡ Klasifikasi Tingkat Konsumsi Energi")
-    fitur = input_form()
-    if st.button("Klasifikasikan"):
-        kelas = model_clf.predict(fitur)[0]
-        label = label_encoder.inverse_transform([kelas])[0]
-        st.success(f"Konsumsi diprediksi berada di kelas: **{label}**")
+with tab1:
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        if st.button("Prediksi Konsumsi", type="primary"):
+            hasil = models['regresi'].predict(fitur)[0]
+            st.success(f"**{hasil:.2f} kWh**")
+       
 
-# --- Halaman Clustering ---
-elif page == "Clustering":
-    st.header("🧠 Clustering Konsumsi Energi")
+with tab2:
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        if st.button("Klasifikasi Tingkat", type="primary"):
+            kelas = models['klasifikasi'].predict(fitur)[0]
+            label = models['encoder'].inverse_transform([kelas])[0]
+            st.success(f"**{label}**")
 
-    fitur_scaled = scaler.transform(df[['Temperature', 'Humidity', 'Occupancy', 'HVACUsage', 'LightingUsage', 'RenewableEnergy']])
+with tab3:
+    fitur_cols = ['Temperature', 'Humidity', 'Occupancy', 'HVACUsage', 'LightingUsage', 'RenewableEnergy']
+    fitur_scaled = models['scaler'].transform(df[fitur_cols])
     kmeans = KMeans(n_clusters=3, random_state=42)
     df['Cluster'] = kmeans.fit_predict(fitur_scaled)
-
+    
     colors = [Category10[3][i] for i in df['Cluster']]
     source = ColumnDataSource(data=dict(
-        x=df['Temperature'],
-        y=df['EnergyConsumption'],
-        cluster=[str(i) for i in df['Cluster']],
-        color=colors
+        x=df['Temperature'], y=df['EnergyConsumption'],
+        cluster=[str(i) for i in df['Cluster']], color=colors
     ))
+    
+    p = figure(title="Clustering Konsumsi Energi", 
+               x_axis_label="Temperature", y_axis_label="Energy Consumption",
+               height=400, width=800)
+    p.circle('x', 'y', color='color', legend_field='cluster', source=source, size=8)
+    st.bokeh_chart(p, use_container_width=True)
 
-    try:
-        p = figure(title="Clustering Konsumsi Energi", x_axis_label="Temperature", y_axis_label="Energy Consumption (kWh)", height=400, width=700)
-        p.circle('x', 'y', color='color', legend_field='cluster', source=source, size=8)
-        st.bokeh_chart(p)
-    except Exception as e:
-        st.error(f"❌ Gagal menampilkan grafik clustering: {e}")
+with tab4:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Konsumsi Bulanan")
+        monthly_avg = df.groupby("Month")["EnergyConsumption"].mean().reset_index()
+        source1 = ColumnDataSource(monthly_avg)
+        
+        p1 = figure(title="Rata-rata Konsumsi per Bulan",
+                    x_axis_label="Bulan", y_axis_label="Energy Consumption",
+                    x_range=[str(m) for m in sorted(df['Month'].unique())],
+                    height=300, width=400)
+        p1.vbar(x='Month', top='EnergyConsumption', source=source1, width=0.5)
+        p1.add_tools(HoverTool(tooltips=[("Bulan", "@Month"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
+        st.bokeh_chart(p1, use_container_width=True)
 
-# --- Halaman Visualisasi ---
-elif page == "Visualisasi":
-    st.header("📈 Visualisasi Interaktif Konsumsi Energi")
-
-    # Rata-rata konsumsi per jam
-    st.subheader("🔄 Konsumsi Energi per Jam berdasarkan Bulan")
-    selected_month = st.selectbox("Pilih Bulan", sorted(df['Month'].unique()))
-    filtered_df = df[df['Month'] == selected_month]
-    hourly_avg = filtered_df.groupby("Hour")["EnergyConsumption"].mean().reset_index()
-    source2 = ColumnDataSource(hourly_avg)
-
-    p2 = figure(title=f"Konsumsi Energi per Jam - Bulan {selected_month}",
-                x_axis_label="Jam", y_axis_label="Energy Consumption (kWh)",
-                height=300, width=700)
-    p2.line(x='Hour', y='EnergyConsumption', source=source2, line_width=2)
-    p2.circle(x='Hour', y='EnergyConsumption', source=source2, size=8)
-    p2.add_tools(HoverTool(tooltips=[("Jam", "@Hour"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
-    st.bokeh_chart(p2)
-
-    # Rata-rata konsumsi per bulan
-    st.subheader("📅 Rata-rata Konsumsi Energi per Bulan")
-    monthly_avg = df.groupby("Month")["EnergyConsumption"].mean().reset_index()
-    source = ColumnDataSource(monthly_avg)
-
-    p1 = figure(title="Rata-rata Konsumsi Energi Bulanan",
-                x_axis_label="Bulan", y_axis_label="Energy Consumption",
-                x_range=[str(m) for m in sorted(df['Month'].unique())],
-                height=300, width=700)
-    p1.vbar(x='Month', top='EnergyConsumption', source=source, width=0.5)
-    p1.add_tools(HoverTool(tooltips=[("Bulan", "@Month"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
-    st.bokeh_chart(p1)
-
-    # Scatter Plot Dinamis
-    st.subheader("📊 Scatter Plot Dinamis")
-    numeric_cols = ['Temperature', 'Humidity', 'Occupancy', 'RenewableEnergy', 'EnergyConsumption']
-    x_axis = st.selectbox("Pilih variabel X", numeric_cols, index=0)
-    y_axis = st.selectbox("Pilih variabel Y", numeric_cols, index=4)
-
-    scatter_source = ColumnDataSource(df)
-    p3 = figure(title=f"{y_axis} vs {x_axis}",
-                x_axis_label=x_axis, y_axis_label=y_axis,
-                height=350, width=700)
-    p3.circle(x=x_axis, y=y_axis, source=scatter_source, size=7, alpha=0.6, color="navy")
-    p3.add_tools(HoverTool(tooltips=[(x_axis, f"@{x_axis}"), (y_axis, f"@{y_axis}")]))
-    st.bokeh_chart(p3)
+    with col2:
+        st.subheader("Konsumsi per Jam")
+        selected_month = st.selectbox("Pilih Bulan", sorted(df['Month'].unique()))
+        filtered_df = df[df['Month'] == selected_month]
+        hourly_avg = filtered_df.groupby("Hour")["EnergyConsumption"].mean().reset_index()
+        source2 = ColumnDataSource(hourly_avg)
+        
+        p2 = figure(title=f"Konsumsi per Jam - Bulan {selected_month}",
+                    x_axis_label="Jam", y_axis_label="Energy Consumption",
+                    height=300, width=400)
+        p2.line(x='Hour', y='EnergyConsumption', source=source2, line_width=2)
+        p2.circle(x='Hour', y='EnergyConsumption', source=source2, size=6)
+        p2.add_tools(HoverTool(tooltips=[("Jam", "@Hour"), ("Rata-rata", "@EnergyConsumption{0.00}")]))
+        st.bokeh_chart(p2, use_container_width=True)
+    
+    st.subheader("Scatter Plot Dinamis")
+    col3, col4, col5 = st.columns([1, 1, 3])
+    
+    with col3:
+        numeric_cols = ['Temperature', 'Humidity', 'Occupancy', 'RenewableEnergy', 'EnergyConsumption']
+        x_axis = st.selectbox("Variabel X", numeric_cols, index=0)
+    with col4:
+        y_axis = st.selectbox("Variabel Y", numeric_cols, index=4)
+    with col5:
+        scatter_source = ColumnDataSource(df)
+        p3 = figure(title=f"{y_axis} vs {x_axis}",
+                    x_axis_label=x_axis, y_axis_label=y_axis,
+                    height=350, width=600)
+        p3.circle(x=x_axis, y=y_axis, source=scatter_source, size=6, alpha=0.6, color="navy")
+        p3.add_tools(HoverTool(tooltips=[(x_axis, f"@{x_axis}"), (y_axis, f"@{y_axis}")]))
+        st.bokeh_chart(p3, use_container_width=True)

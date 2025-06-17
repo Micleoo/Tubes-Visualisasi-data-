@@ -1,6 +1,6 @@
 streamlit
 pandas
-numpy
+numpy==1.24.4
 scikit-learn
-bokeh
+bokeh==2.4.3
 joblib
